@@ -52,8 +52,21 @@ sub processRef {
                 parent_type => '',
                 child_type => '',
                 child_key => ''});
+
+  # tmap shamelessly procured from JSON::PP
+  my %tmap = qw(
+      B::NULL   SCALAR
+      B::HV     HASH
+      B::AV     ARRAY
+      B::CV     CODE
+      B::IO     IO
+      B::GV     GLOB
+      B::REGEXP REGEXP
+  );
+
   my @result;
   my $seen = {};
+  my $circcount = 0;
 
   while (@queue) {
     my $ref = shift @queue;
@@ -81,7 +94,8 @@ sub processRef {
     my $value;
 
     if ($type1 eq 'HASH') {
-      if (!$seen->{$addr}) {
+      # queue up children of hash, this is just the keys, values will be children of the key
+      if (!exists $seen->{$addr}) {
         foreach my $key (sort keys %{${$ref->{ref}}}) {
           push @queue, {ref => \${$ref->{ref}}->{$key},
                         parent => $addr,
@@ -91,7 +105,8 @@ sub processRef {
         }
       }
     } elsif ($type1 eq 'ARRAY') {
-      if (!$seen->{$addr}) {
+      # queue up children of the array, this is just the indexes, values will be children of the index
+      if (!exists $seen->{$addr}) {
         my $length = scalar @{${$ref->{ref}}} - 1;
         foreach my $index (0 .. $length) {
           push @queue, {ref => \${$ref->{ref}}->[$index],
@@ -101,25 +116,29 @@ sub processRef {
                         child_key => $index};
         }
       }
-    } elsif ($type1 eq 'REF') {
-      if (!$seen->{${$ref->{ref}}}) {
-        push @queue, {ref => ${$ref->{ref}},
-                      parent => $addr,
-                      parent_type => 'ref',
-                      child_type => 'ref',
-                      child_key => ''};
-      }
-      $value = \${$ref->{ref}} + 0;
-    } elsif ($type1 eq 'SCALAR') {
-      if (!$seen->{${$ref->{ref}}}) {
-        push @queue, {ref => ${$ref->{ref}},
-                      parent => $addr,
-                      parent_type => 'scalarref',
-                      child_type => 'scalarref',
-                      child_key => ''};
-      }
-      $value = \${$ref->{ref}} + 0;
+# commenting out until I get logic right
+#    } elsif ($type1 eq 'REF') {
+#      # this is a ref to another reference
+#      if (!exists $seen->{${$ref->{ref}}}) {
+#        push @queue, {ref => ${$ref->{ref}},
+#                      parent => $addr,
+#                      parent_type => 'ref',
+#                      child_type => 'ref',
+#                      child_key => ''};
+#      }
+#      $value = \${$ref->{ref}} + 0;
+#    } elsif ($type1 eq 'SCALAR') {
+#      # this is a ref to a scalar
+#      if (!exists $seen->{${$ref->{ref}}}) {
+#        push @queue, {ref => ${$ref->{ref}},
+#                      parent => $addr,
+#                      parent_type => 'scalarref',
+#                      child_type => 'scalarref',
+#                      child_key => ''};
+#      }
+#      $value = \${$ref->{ref}} + 0;
     } elsif ($type1 eq 'scalarval' || $type1 eq 'REGEXP') {
+      # store the value
       $value = ${$ref->{ref}};
     } else {
       warn "Unhandled: type1 = $type1\n" .
@@ -130,34 +149,47 @@ sub processRef {
       next;
     }
 
+    # detect circular references
+    my $circular_ref = 0;
+    my $obj_id;
+    if ($seen->{$addr}) {
+      $circular_ref = 1;
+      $obj_id = $seen->{$addr . '_' . $circcount} = getNextId();
+    } else {
+      $obj_id = $seen->{$addr} = getNextId();
+    }
 
-    # TODO: investigate why this happens
-    #       it may be needed due to bug in getting $addr
-    next if $addr == $ref->{parent};
-
-    my $obj = {address => $addr,
-               blessed => $blessed,
-               type => $type1,
-               child_type => $ref->{child_type},
-               child_key => $ref->{child_key},
-               parent => $ref->{parent}};
+    my $obj = {
+      address => $addr,
+      id => $obj_id,
+      circ_id => $circular_ref ? $seen->{$addr} : undef,
+      blessed => $blessed,
+      type => $type1,
+      child_type => $ref->{child_type},
+      child_key => $ref->{child_key},
+      parent_address => $ref->{parent},
+      parent_id => defined $ref->{parent} ? $seen->{$ref->{parent}} : undef,
+    };
 
     $obj->{value} = $value if defined $value;
 
-    push @result, $obj;
+    if ($circular_ref) {
+      $circcount++;
+    }
 
-    $seen->{$addr} = 1;
+    push @result, $obj;
   }
 
   return \@result;
 }
 
-
-=head2 function1
+=head2 getNextId
 
 =cut
 
-sub function1 {
+my $id = 0;
+sub getNextId {
+  return ++$id;
 }
 
 =head2 function2
