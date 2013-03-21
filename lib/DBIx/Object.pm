@@ -120,9 +120,8 @@ sub processRef {
     } elsif ($type1 eq 'REF') {
       # this is a ref to another reference
       # If value has been seen, use it, otherwise push value onto queue, and push self back onto queue
+      # check child to see if we have seen it yet
       if (!exists $seen->{${$ref->{ref}}}) {
-        # check child to see if we have seen it yet
-        if (!exists $seen->{\${$ref->{ref}}}) {
           push @queue, {ref => ${$ref->{ref}},
                         parent => $addr,
                         parent_type => 'ref',
@@ -131,9 +130,8 @@ sub processRef {
           # push current back onto queue until child is resolved
           push @queue, $ref;
           next;
-        } else {
-          $value = $seen->{\${$ref->{ref}}};
-        }
+      } else {
+        $value = $seen->{\${$ref->{ref}}};
       }
 # commenting out until I get logic right
 #    } elsif ($type1 eq 'SCALAR') {
