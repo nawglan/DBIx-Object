@@ -3,6 +3,7 @@ package DBIx::Object;
 use warnings;
 use strict;
 use B;
+use DBIx::Connector;
 
 =head1 NAME
 
@@ -116,17 +117,25 @@ sub processRef {
                         child_key => $index};
         }
       }
+    } elsif ($type1 eq 'REF') {
+      # this is a ref to another reference
+      # If value has been seen, use it, otherwise push value onto queue, and push self back onto queue
+      if (!exists $seen->{${$ref->{ref}}}) {
+        # check child to see if we have seen it yet
+        if (!exists $seen->{\${$ref->{ref}}}) {
+          push @queue, {ref => ${$ref->{ref}},
+                        parent => $addr,
+                        parent_type => 'ref',
+                        child_type => 'ref',
+                        child_key => ''};
+          # push current back onto queue until child is resolved
+          push @queue, $ref;
+          next;
+        } else {
+          $value = $seen->{\${$ref->{ref}}};
+        }
+      }
 # commenting out until I get logic right
-#    } elsif ($type1 eq 'REF') {
-#      # this is a ref to another reference
-#      if (!exists $seen->{${$ref->{ref}}}) {
-#        push @queue, {ref => ${$ref->{ref}},
-#                      parent => $addr,
-#                      parent_type => 'ref',
-#                      child_type => 'ref',
-#                      child_key => ''};
-#      }
-#      $value = \${$ref->{ref}} + 0;
 #    } elsif ($type1 eq 'SCALAR') {
 #      # this is a ref to a scalar
 #      if (!exists $seen->{${$ref->{ref}}}) {
