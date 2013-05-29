@@ -3,6 +3,7 @@ package DBIx::Object;
 use warnings;
 use strict;
 use B;
+use B::Deparse;
 use DBIx::Connector;
 
 =head1 NAME
@@ -42,17 +43,20 @@ if you don't export anything, such as for a purely object-oriented module.
      blessed => $blessed,
      type => $type1,
      child_type => $ref->{child_type},
-     child_key => $ref->{child_key},
+     child_name => $ref->{child_name},
      parent => $ref->{parent}};
 
 =cut
+
+my $num_id_digits = 10;
+my $fmtstr = '%0' . $num_id_digits . 'x';
 
 sub processRef {
   my @queue = ({ref => \$_[0],
                 parent => '',
                 parent_type => '',
                 child_type => '',
-                child_key => ''});
+                child_name => ''});
 
   # tmap shamelessly procured from JSON::PP
   my %tmap = qw(
@@ -68,6 +72,7 @@ sub processRef {
   my @result;
   my $seen = {};
   my $circcount = 0;
+  my $deparse = B::Deparse->new();
 
   while (@queue) {
     my $ref = shift @queue;
@@ -97,12 +102,12 @@ sub processRef {
     if ($type1 eq 'HASH') {
       # queue up children of hash, this is just the keys, values will be children of the key
       if (!exists $seen->{$addr}) {
-        foreach my $key (sort keys %{${$ref->{ref}}}) {
+        foreach my $key (keys %{${$ref->{ref}}}) {
           push @queue, {ref => \${$ref->{ref}}->{$key},
                         parent => $addr,
                         parent_type => 'hash',
                         child_type => 'key',
-                        child_key => $key};
+                        child_name => $key};
         }
       }
     } elsif ($type1 eq 'ARRAY') {
@@ -114,39 +119,34 @@ sub processRef {
                         parent => $addr,
                         parent_type => 'array',
                         child_type => 'index',
-                        child_key => $index};
+                        child_name => $index};
         }
       }
     } elsif ($type1 eq 'REF') {
       # this is a ref to another reference
-      # If value has been seen, use it, otherwise push value onto queue, and push self back onto queue
-      # check child to see if we have seen it yet
-      if (!exists $seen->{${$ref->{ref}}}) {
+      if (!exists $seen->{$addr}) {
           push @queue, {ref => ${$ref->{ref}},
                         parent => $addr,
                         parent_type => 'ref',
                         child_type => 'ref',
-                        child_key => ''};
-          # push current back onto queue until child is resolved
-          push @queue, $ref;
-          next;
+                        child_name => ''};
       } else {
-        $value = $seen->{\${$ref->{ref}}};
+        $value = $seen->{${$ref->{ref}}};
       }
-# commenting out until I get logic right
-#    } elsif ($type1 eq 'SCALAR') {
-#      # this is a ref to a scalar
-#      if (!exists $seen->{${$ref->{ref}}}) {
-#        push @queue, {ref => ${$ref->{ref}},
-#                      parent => $addr,
-#                      parent_type => 'scalarref',
-#                      child_type => 'scalarref',
-#                      child_key => ''};
-#      }
-#      $value = \${$ref->{ref}} + 0;
+    } elsif ($type1 eq 'SCALAR' || $type1 eq 'GLOB') {
+      # this is a ref to a scalar or glob
+      if (!exists $seen->{$addr}) {
+        push @queue, {ref => ${$ref->{ref}},
+                      parent => $addr,
+                      parent_type => 'scalarref',
+                      child_type => 'scalarref',
+                      child_name => ''};
+      }
     } elsif ($type1 eq 'scalarval' || $type1 eq 'REGEXP') {
       # store the value
       $value = ${$ref->{ref}};
+    } elsif ($type1 eq 'CODE') {
+      $value = $deparse->coderef2text(${$ref->{ref}});
     } else {
       warn "Unhandled: type1 = $type1\n" .
            "           type2 = $type2\n" .
@@ -166,16 +166,18 @@ sub processRef {
       $obj_id = $seen->{$addr} = getNextId();
     }
 
+    my $parent_id = $ref->{parent} ? sprintf ($fmtstr, $seen->{$ref->{parent}}) : sprintf ($fmtstr, 0);
+
     my $obj = {
-      address => $addr,
+      #address => $addr,
+      parent_id => $parent_id,
       id => $obj_id,
       circ_id => $circular_ref ? $seen->{$addr} : undef,
       blessed => $blessed,
       type => $type1,
       child_type => $ref->{child_type},
-      child_key => $ref->{child_key},
-      parent_address => $ref->{parent},
-      parent_id => defined $ref->{parent} ? $seen->{$ref->{parent}} : undef,
+      child_name => $ref->{child_name},
+      #parent_address => $ref->{parent},
     };
 
     $obj->{value} = $value if defined $value;
@@ -196,7 +198,7 @@ sub processRef {
 
 my $id = 0;
 sub getNextId {
-  return ++$id;
+  return sprintf ($fmtstr, ++$id);
 }
 
 =head2 function2

@@ -1,5 +1,10 @@
 Revision history for DBIx::Object
 
-0.01    Date/time
-        First version, released on an unsuspecting world.
+0.02    2013-05-29/00:55
+        Ensure that object ids of children are bigger than the id of their parent
+        Enable storing code refs (warning, must be able to be parsed by B::Deparse see B::Deparse for info)
+        Detect Circular Refs
+
+0.01    2013-03-20/18:03
+        First version.
 

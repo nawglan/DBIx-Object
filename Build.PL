@@ -8,6 +8,8 @@ my $builder = Module::Build->new(
     dist_author         => 'Desmond Daignault <nawglan@gmail.com>',
     dist_version_from   => 'lib/DBIx/Object.pm',
     build_requires => {
+        'B' => 0,
+        'B::Deparse' => 0,
         'DBIx::Connector' => 0,
         'Test::More' => 0,
     },
